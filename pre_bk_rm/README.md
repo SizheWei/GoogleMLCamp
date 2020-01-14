@@ -34,8 +34,8 @@ python3 seg.py sample.jpg sample.png 1
 
 ### Sample Result
 Input: 
-![alt text](https://github.com/SizheWei/GoogleMLCamp/blob/master/image_4.jpg "Input")
+![alt text](https://github.com/SizheWei/GoogleMLCamp/blob/master/pre_bk_rm/image_4.jpg "Input")
 
 Output: 
-![alt text](https://github.com/SizheWei/GoogleMLCamp/blob/master/output_4.png "Output")
+![alt text](https://github.com/SizheWei/GoogleMLCamp/blob/master/pre_bk_rm/output_4.png "Output")
 
