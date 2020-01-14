@@ -4,4 +4,7 @@ mobile_net_model/
 xception_model/
 .ipynb_checkpoints/
 .checkpoint/
+!image_4.jpg
+!output_4.png
+!image_4.png
 
