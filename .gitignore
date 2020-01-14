@@ -1,10 +1,8 @@
-*.jpg
-*.png
-mobile_net_model/
-xception_model/
-.ipynb_checkpoints/
-.checkpoint/
-!image_4.jpg
-!output_4.png
-!image_4.png
+pre_bk_rm/*.jpg
+pre_bk_rm/*.png
+pre_bk_rm/mobile_net_model/
+pre_bk_rm/xception_model/
+pre_bk_rm/.ipynb_checkpoints/
+!pre_bk_rm/image_4.jpg
+!pre_bk_rm/output_4.png
 
