@@ -9,21 +9,27 @@ import argparse
 import subprocess
 import glob
 import tensorflow as tf
-from inpainting_tensorflow.util.util import generate_mask_rect, generate_mask_stroke
-from inpainting_tensorflow.net.network import GMCNNModel
+from util.util import generate_mask_rect, generate_mask_stroke
+from net.network import GMCNNModel
 import argparse
 import os
 import time
 import dlib
 import sys,os,traceback
 import numpy as np
+from face import Makeup
+from changemask import changemouth
+from changemask import changenose
+from changemask import changehead
+from changemask import changeeye
 
 class Paint():
     MARKER_COLOR = 'white'
 
-    def __init__(self):
+    def __init__(self,model):
 
         self.root = Tk()
+        self.inpaintingmodel=model
 
         self.rect_button = Button(self.root, text='rectangle', command=self.use_rect, width=12, height=3)
         self.rect_button.grid(row=0, column=2)
@@ -83,7 +89,7 @@ class Paint():
         self.mask = None
         self.result = None
         self.blank = None
-        self.line_width = 24
+        self.line_width = 15
 
         self.reuse = False
 
@@ -116,43 +122,105 @@ class Paint():
             self.rect_candidate.clear()
             self.mask_candidate.clear()
             if self.blank is None:
-                self.blank = Image.open('C:/Users/76789/Desktop/blank.png')
+                self.blank = Image.open('./imgs/blank.png')
             self.blank = self.blank.resize((self.im_w, self.im_h))
             self.blank_tk = ImageTk.PhotoImage(image=self.blank)
             self.out.create_image(0, 0, image=self.blank_tk, anchor=NW)
 
     def save(self):
         img = np.array(self.displayPhoto)
-        cv2.imwrite(os.path.join(self.filepath, 'tmp.png'), img)
+        #cv2.imwrite(os.path.join(self.filepath, 'tmp.png'), img)
 
         if self.mode == 'rect':
             self.mask[:,:,:] = 0
             for rect in self.mask_candidate:
                 self.mask[rect[1]:rect[3], rect[0]:rect[2], :] = 1
-        print(img.shape)
-        print(self.mask.max())
-        cv2.imwrite(os.path.join(self.filepath, self.filename_+'_mask.png'), self.mask*255)
-        #cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_gm_result.png'), self.result[0][:, :, ::-1])
-
-    def fill(self):
-        if self.mode == 'rect':
-            for rect in self.mask_candidate:
-                self.mask[rect[1]:rect[3], rect[0]:rect[2], :] = 1
-        image = np.expand_dims(self.image, 0)
+        image = np.expand_dims(img, 0)
         mask = np.expand_dims(self.mask, 0)
-        print(image.shape)
-        print(mask.shape)
-
-        self.result = self.sess.run(self.output, feed_dict={self.input_image_tf: image * 1.0,
-                                                            self.input_mask_tf: mask * 1.0})
-        cv2.imwrite('./imgs/tmp.png', self.result[0][:, :, ::-1])
-
-        photo = Image.open('./imgs/tmp.png')
+        result_tmp = self.inpaintingmodel.run(output, feed_dict={input_image_tf: image, input_mask_tf: mask})
+        result = cv2.merge([result_tmp[0][:, :, 0], result_tmp[0][:, :, 1], result_tmp[0][:, :, 2]])
+        #cv2.imwrite(os.path.join(self.filepath, self.filename_+'_mask.png'), self.mask*255)
+        cv2.imwrite(os.path.join(self.filepath, self.filename_+'_out.png'), result)
+        photo = Image.open(os.path.join(self.filepath, self.filename_+'_out.png'))
         self.displayPhotoResult = photo
         self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
         self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
         self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
-        return
+        # cv2.imwrite(os.path.join(self.filepath, self.filename_+'_out.png'), result[0][:, :, ::-1])
+        #cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_gm_result.png'), self.result[0][:, :, ::-1])
+        #self.displayPhotoResult = photo
+
+    def fill(self):
+        image = cv2.imread(os.path.join(self.filepath, self.filename))
+        # cv2.imwrite(os.path.join(self.filepath, 'tmp.png'), img)
+        im, temp_bgr, faces = mu.read_and_mark(os.path.join(self.filepath, self.filename))
+        mask=self.mask.copy()
+        mask[:,:,0]=0
+        maskeye = mask.copy()
+        path = os.path.join(self.filepath, self.filename)
+        face = next(iter(faces[path]))
+        facemask = face.organs['left eye'].get_mask_abs() + face.organs['right eye'].get_mask_abs()
+        for p in range(512):
+            for q in range(512):
+                if facemask[p][q].min() > 0:
+                    # pass
+                    maskeye[p][q] = 1
+        maskeye = changeeye(maskeye)
+        headmask = face.organs['left brow'].get_mask_abs() + face.organs['right brow'].get_mask_abs()
+        maskhead = mask.copy()
+        masknose = mask.copy()
+        maskmouth = mask.copy()
+        for p in range(512):
+            for q in range(512):
+                if headmask[p][q].min() > 0:
+                    # pass
+                    maskhead[p][q] = 1
+        maskhead = changehead(maskhead)
+
+        for p in range(512):
+            for q in range(512):
+                if maskhead[p][q] == 1 or maskeye[p][q] == 1:
+                    mask[p][q] = 1
+
+        nosemask = face.organs['nose'].get_mask_abs()
+        for p in range(512):
+            for q in range(512):
+                if nosemask[p][q].min() > 0:
+                    # pass
+                    masknose[p][q] = 1
+
+        masknose = changenose(masknose)
+
+        for p in range(512):
+            for q in range(512):
+                if masknose[p][q] == 1:
+                    mask[p][q] = 0
+
+        image = np.expand_dims(image, 0)
+        mask = np.expand_dims(mask, 0)
+        result_tmp = self.inpaintingmodel.run(output, feed_dict={input_image_tf: image, input_mask_tf: mask})
+        result = cv2.merge([result_tmp[0][:, :, 2], result_tmp[0][:, :, 1], result_tmp[0][:, :, 0]])
+        cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_autoout.png'), result)
+        photo = Image.open(os.path.join(self.filepath, self.filename_ + '_autoout.png'))
+        self.displayPhotoResult = photo
+        self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
+        self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
+        self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
+        # if self.mode == 'rect':
+        #     self.mask[:, :, :] = 0
+        #     for rect in self.mask_candidate:
+        #         self.mask[rect[1]:rect[3], rect[0]:rect[2], :] = 1
+        # image = np.expand_dims(img, 0)
+        # mask = np.expand_dims(self.mask, 0)
+        # result_tmp = self.inpaintingmodel.run(output, feed_dict={input_image_tf: image, input_mask_tf: mask})
+        # result = cv2.merge([result_tmp[0][:, :, 0], result_tmp[0][:, :, 1], result_tmp[0][:, :, 2]])
+        # # cv2.imwrite(os.path.join(self.filepath, self.filename_+'_mask.png'), self.mask*255)
+        # cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_out.png'), result)
+        # photo = Image.open(os.path.join(self.filepath, self.filename_ + '_out.png'))
+        # self.displayPhotoResult = photo
+        # self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
+        # self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
+        # self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
 
     def use_rect(self):
         self.activate_button(self.rect_button)
@@ -319,7 +387,7 @@ class TestOptions:
 
         return self.opt
 
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 config = TestOptions().parse()
 
 config.dataset_path="./imgs/data/"
@@ -369,6 +437,5 @@ total_time = 0
 if config.random_mask:
     np.random.seed(config.seed)
 
-
-Paint()
-
+mu = Makeup()
+Paint(sess)

@@ -6,22 +6,23 @@ import cv2
 import os
 import subprocess
 import argparse
-import subprocess
-import glob
 import tensorflow as tf
-from inpainting_tensorflow.util.util import generate_mask_rect, generate_mask_stroke
-from inpainting_tensorflow.net.network import GMCNNModel
-import argparse
-import os
-import time
-import dlib
-import sys,os,traceback
-import numpy as np
+from options.test_options import TestOptions
 
-class Paint():
+from net.network import GMCNNModel
+
+# os.environ['CUDA_VISIBLE_DEVICES'] = str(np.argmax([int(x.split()[2]) for x in subprocess.Popen(
+#     "nvidia-smi -q -d Memory | grep -A4 GPU | grep Free", shell=True, stdout=subprocess.PIPE).stdout.readlines()]))
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+# model_savepath = {'places2ful': 'model_places2ful512/', 'places2': 'model_places2ful/', 'celebAHQ': 'model_celebAHQ/',
+#                   'paris_streetview': 'model_paris/', 'celebA': 'model_celebA/'}
+
+class Paint(object):
     MARKER_COLOR = 'white'
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
 
         self.root = Tk()
 
@@ -37,10 +38,10 @@ class Paint():
         self.clear_button = Button(self.root, text='clear', command=self.clear, width=12, height=3)
         self.clear_button.grid(row=3, column=2)
 
-        self.c = Canvas(self.root, bg='white', width=512+8, height=512)
+        self.c = Canvas(self.root, bg='white', width=config.img_shapes[1]+8, height=config.img_shapes[0])
         self.c.grid(row=0, column=0, rowspan=8)
 
-        self.out = Canvas(self.root, bg='white', width=512+8, height=512)
+        self.out = Canvas(self.root, bg='white', width=config.img_shapes[1]+8, height=config.img_shapes[0])
         self.out.grid(row=0, column=1, rowspan=8)
 
         self.save_button = Button(self.root, text="save", command=self.save, width=12, height=3)
@@ -85,8 +86,28 @@ class Paint():
         self.blank = None
         self.line_width = 24
 
+        self.model = GMCNNModel()
         self.reuse = False
+        sess_config = tf.ConfigProto()
+        sess_config.gpu_options.allow_growth = False
+        self.sess = tf.Session(config=sess_config)
 
+        self.input_image_tf = tf.placeholder(dtype=tf.float32,
+                                             shape=[1, self.config.img_shapes[0], self.config.img_shapes[1], 3])
+        self.input_mask_tf = tf.placeholder(dtype=tf.float32,
+                                            shape=[1, self.config.img_shapes[0], self.config.img_shapes[1], 1])
+
+        output = self.model.evaluate(self.input_image_tf, self.input_mask_tf, config=self.config, reuse=self.reuse)
+        output = (output + 1) * 127.5
+        output = tf.minimum(tf.maximum(output[:, :, :, ::-1], 0), 255)
+        self.output = tf.cast(output, tf.uint8)
+
+        # load pretrained model
+        vars_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        assign_ops = list(map(lambda x: tf.assign(x, tf.contrib.framework.load_variable(config.load_model_dir, x.name)),
+                              vars_list))
+        self.sess.run(assign_ops)
+        print('Model loaded.')
 
     def checkResp(self):
         assert len(self.mask_candidate) == len(self.rect_candidate)
@@ -98,7 +119,7 @@ class Paint():
                                                                 ("all files", "*.*")))
         self.filename_ = self.filename.split('/')[-1][:-4]
         self.filepath = '/'.join(self.filename.split('/')[:-1])
-        #print(self.filename_, self.filepath)
+        print(self.filename_, self.filepath)
         try:
             photo = Image.open(self.filename)
             self.image = cv2.imread(self.filename)
@@ -116,7 +137,7 @@ class Paint():
             self.rect_candidate.clear()
             self.mask_candidate.clear()
             if self.blank is None:
-                self.blank = Image.open('C:/Users/76789/Desktop/blank.png')
+                self.blank = Image.open('imgs/blank.png')
             self.blank = self.blank.resize((self.im_w, self.im_h))
             self.blank_tk = ImageTk.PhotoImage(image=self.blank)
             self.out.create_image(0, 0, image=self.blank_tk, anchor=NW)
@@ -129,10 +150,8 @@ class Paint():
             self.mask[:,:,:] = 0
             for rect in self.mask_candidate:
                 self.mask[rect[1]:rect[3], rect[0]:rect[2], :] = 1
-        print(img.shape)
-        print(self.mask.max())
         cv2.imwrite(os.path.join(self.filepath, self.filename_+'_mask.png'), self.mask*255)
-        #cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_gm_result.png'), self.result[0][:, :, ::-1])
+        cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_gm_result.png'), self.result[0][:, :, ::-1])
 
     def fill(self):
         if self.mode == 'rect':
@@ -242,133 +261,8 @@ class Paint():
     def icon2mice(self, event):
         return
 
-class TestOptions:
-    def __init__(self):
-        self.parser = argparse.ArgumentParser()
-        self.initialized = False
 
-    def initialize(self):
-        self.parser.add_argument('--dataset', type=str, default='paris_streetview',required=False,
-                                 help='The dataset of the experiment.')
-        self.parser.add_argument('--data_file', type=str, default='./imgs/celebahq_512x512',required=False, help='the file storing testing file paths')
-        self.parser.add_argument('--test_dir', type=str, default='./test_results',required=False, help='models are saved here')
-        self.parser.add_argument('--load_model_dir', type=str, default="./checkpoints/celebahq_512x512_freeform/",required=False, help='pretrained models are given here')
-        self.parser.add_argument('--seed', type=int, default=1,required=False, help='random seed')
-        self.parser.add_argument('--gpu_ids', type=str,required=False, default='0')
-
-        self.parser.add_argument('--model', type=str,required=False, default='gmcnn')
-        self.parser.add_argument('--random_mask', type=int, default=0,required=False,
-                                 help='using random mask')
-
-        self.parser.add_argument('--img_shapes', type=str, default='512,512,3',required=False,
-                                 help='given shape parameters: h,w,c or h,w')
-        self.parser.add_argument('--mask_shapes', type=str, default='32,32',required=False,
-                                 help='given mask parameters: h,w')
-        self.parser.add_argument('--mask_type', type=str, default='rect',required=False)
-        self.parser.add_argument('--test_num', type=int, default=-1,required=False)
-        self.parser.add_argument('--mode', type=str, default='save',required=False)
-        self.parser.add_argument('--phase', type=str, default='test',required=False)
-
-        # for generator
-        self.parser.add_argument('--g_cnum', type=int, default=32,required=False,
-                                 help='# of generator filters in first conv layer')
-        self.parser.add_argument('--d_cnum', type=int, default=32,required=False,
-                                 help='# of discriminator filters in first conv layer')
-
-    def parse(self):
-        if not self.initialized:
-            self.initialize()
-        self.opt = self.parser.parse_args(args=[])
-
-        if self.opt.data_file != '':
-            self.opt.dataset_path = self.opt.data_file
-
-        if os.path.exists(self.opt.test_dir) is False:
-            os.mkdir(self.opt.test_dir)
-
-        assert self.opt.random_mask in [0, 1]
-        self.opt.random_mask = True if self.opt.random_mask == 1 else False
-
-        assert self.opt.mask_type in ['rect', 'stroke']
-
-        str_img_shapes = self.opt.img_shapes.split(',')
-        self.opt.img_shapes = [int(x) for x in str_img_shapes]
-
-        str_mask_shapes = self.opt.mask_shapes.split(',')
-        self.opt.mask_shapes = [int(x) for x in str_mask_shapes]
-
-        # model name and date
-        self.opt.date_str = 'test_'+time.strftime('%Y%m%d-%H%M%S')
-        self.opt.model_folder = self.opt.date_str + '_' + self.opt.dataset + '_' + self.opt.model
-        self.opt.model_folder += '_s' + str(self.opt.img_shapes[0]) + 'x' + str(self.opt.img_shapes[1])
-        self.opt.model_folder += '_gc' + str(self.opt.g_cnum)
-        self.opt.model_folder += '_randmask-' + self.opt.mask_type if self.opt.random_mask else ''
-        if self.opt.random_mask:
-            self.opt.model_folder += '_seed-' + str(self.opt.seed)
-        self.opt.saving_path = os.path.join(self.opt.test_dir, self.opt.model_folder)
-
-        if os.path.exists(self.opt.saving_path) is False and self.opt.mode == 'save':
-            os.mkdir(self.opt.saving_path)
-
-        args = vars(self.opt)
-
-        print('------------ Options -------------')
-        for k, v in sorted(args.items()):
-            print('%s: %s' % (str(k), str(v)))
-        print('-------------- End ----------------')
-
-        return self.opt
-
-
-config = TestOptions().parse()
-
-config.dataset_path="./imgs/data/"
-config.mask_type='stroke'
-pathfile = glob.glob(os.path.join(config.dataset_path, '*.jpg'))
-test_num = len(pathfile)
-for i in range(test_num):
-    image = cv2.imread(pathfile[i])
-    h, w = image.shape[:2]
-
-    if h >= config.img_shapes[0] and w >= config.img_shapes[1]:
-        h_start = (h-config.img_shapes[0]) // 2
-        w_start = (w-config.img_shapes[1]) // 2
-        image = image[h_start: h_start+config.img_shapes[0], w_start: w_start+config.img_shapes[1], :]
-    else:
-        t = min(h, w)
-        image = image[(h-t)//2:(h-t)//2+t, (w-t)//2:(w-t)//2+t, :]
-        image = cv2.resize(image, (config.img_shapes[1], config.img_shapes[0]))
-    cv2.imwrite(os.path.join(config.dataset_path, '{:03d}.png'.format(i)),image)
-pathfile = glob.glob(os.path.join(config.dataset_path, '*.png'))
-test_num= len(pathfile)
-print(test_num)
-
-model = GMCNNModel()
-
-reuse = False
-sess_config = tf.ConfigProto()
-sess_config.gpu_options.allow_growth = False
-sess=tf.Session(config=sess_config)
-
-input_image_tf = tf.placeholder(dtype=tf.float32, shape=[1, config.img_shapes[0], config.img_shapes[1], 3])
-input_mask_tf = tf.placeholder(dtype=tf.float32, shape=[1, config.img_shapes[0], config.img_shapes[1], 1])
-
-output = model.evaluate(input_image_tf, input_mask_tf, config=config, reuse=reuse)
-output = (output + 1) * 127.5
-output = tf.minimum(tf.maximum(output[:, :, :, ::-1], 0), 255)
-output = tf.cast(output, tf.uint8)
-
-# load pretrained model
-vars_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-assign_ops = list(map(lambda x: tf.assign(x, tf.contrib.framework.load_variable(config.load_model_dir, x.name)),
-                      vars_list))
-sess.run(assign_ops)
-print('Model loaded.')
-total_time = 0
-
-if config.random_mask:
-    np.random.seed(config.seed)
-
-
-Paint()
-
+if __name__ == '__main__':
+    config = TestOptions().parse()
+    config.mode = 'silent'
+    ge = Paint(config)
