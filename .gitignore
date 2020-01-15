@@ -5,4 +5,6 @@ pre_bk_rm/xception_model/
 pre_bk_rm/.ipynb_checkpoints/
 !pre_bk_rm/image_4.jpg
 !pre_bk_rm/output_4.png
+.DS_Store
+bk_rm/.DS_Store
 
