@@ -9,4 +9,4 @@ pre_bk_rm/.ipynb_checkpoints/
 bk_rm/.DS_Store
 checkpoints/
 shape_predictor_68_face_landmarks.dat
-
+inpainting_tensorflow/mattingmodel/
