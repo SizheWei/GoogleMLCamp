@@ -225,7 +225,7 @@ model = UNet(3,1)
 PATH = './model_big/weights_70.pth'
 model.load_state_dict(torch.load(PATH,map_location='cpu'))
 
-x_path = './data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000009/1803151818-00009507.jpg'
+x_path = './data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000009/1803151818-00009001.jpg'
 x = cv2.imread(x_path)
 x = x.transpose((2,0,1))
 x = x[:,144:656, 44:556]
@@ -233,7 +233,7 @@ x = torch.from_numpy(x)
 x = x.unsqueeze(0)
 x = x.to(device, dtype=torch.float)
 out =model(x)
-out = (out>0.60)*1
+out = (out>0.65)*1
 
 my_result = out[0][0]
 
@@ -245,4 +245,5 @@ ori_image = cv2.merge([tmp[2],tmp[1],tmp[0]])
 my_alpha = ((my_result.numpy())*255).astype(np.uint8)
 final = cv2.merge([tmp[2],tmp[1],tmp[0],my_alpha])
 
-cv2.imwrite("./results/final_result.png", final)
+final = cv2.cvtColor(final,cv2.COLOR_BGRA2RGBA)
+cv2.imwrite("./results/final.png", final)
