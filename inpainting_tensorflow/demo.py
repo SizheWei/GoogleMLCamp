@@ -22,6 +22,11 @@ from changemask import changemouth
 from changemask import changenose
 from changemask import changehead
 from changemask import changeeye
+import torch.nn as nn
+import torch
+import cv2
+import PIL.Image as Image
+from net.mattingnet import UNet
 
 class Paint():
     MARKER_COLOR = 'white'
@@ -146,6 +151,8 @@ class Paint():
         self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
         self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
         self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
+
+
         # cv2.imwrite(os.path.join(self.filepath, self.filename_+'_out.png'), result[0][:, :, ::-1])
         #cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_gm_result.png'), self.result[0][:, :, ::-1])
         #self.displayPhotoResult = photo
@@ -202,10 +209,14 @@ class Paint():
         result = cv2.merge([result_tmp[0][:, :, 2], result_tmp[0][:, :, 1], result_tmp[0][:, :, 0]])
         cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_autoout.png'), result)
         photo = Image.open(os.path.join(self.filepath, self.filename_ + '_autoout.png'))
-        self.displayPhotoResult = photo
-        self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
-        self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
-        self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
+
+        self.displayPhoto = photo
+        self.displayPhoto = self.displayPhoto.resize((self.im_w, self.im_h))
+        self.draw = ImageDraw.Draw(self.displayPhoto)
+        self.photo_tk = ImageTk.PhotoImage(image=self.displayPhoto)
+        self.c.create_image(0, 0, image=self.photo_tk, anchor=NW)
+
+        self.filename = self.filename_ + '_autoout.png'
         # if self.mode == 'rect':
         #     self.mask[:, :, :] = 0
         #     for rect in self.mask_candidate:
@@ -223,8 +234,48 @@ class Paint():
         # self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
 
     def use_rect(self):
-        self.activate_button(self.rect_button)
-        self.mode = 'rect'
+        # cv2.imwrite(os.path.join(self.filepath, 'tmp.png'), img)
+        x = cv2.imread(os.path.join(self.filepath, self.filename))
+        x = x.transpose((2, 0, 1))
+        x = torch.from_numpy(x)
+        x = x.unsqueeze(0)
+        x = x.to(device, dtype=torch.float)
+        out = mattingmodel(x)
+        out = (out > 0.65) * 1
+        out = out.cpu()
+        x = x.cpu()
+        print("done")
+        my_result = out[0][0]
+
+        tmp = x[0].numpy().astype(np.uint8)
+        ori_image = cv2.merge([tmp[2], tmp[1], tmp[0]])
+
+        tmp_r = (tmp.astype(np.int)[2] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        tmp_g = (tmp.astype(np.int)[1] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        tmp_b = (tmp.astype(np.int)[0] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        final = cv2.merge([tmp_r, tmp_g, tmp_b])
+
+
+        final = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
+        cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_mattingout.png'), final)
+
+        photo = Image.open(os.path.join(self.filepath, self.filename_ + '_mattingout.png'))
+        # self.displayPhotoResult = photo
+        # self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
+        # self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
+        # self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
+
+        self.displayPhoto = photo
+        self.displayPhoto = self.displayPhoto.resize((self.im_w, self.im_h))
+        self.draw = ImageDraw.Draw(self.displayPhoto)
+        self.photo_tk = ImageTk.PhotoImage(image=self.displayPhoto)
+        self.c.create_image(0, 0, image=self.photo_tk, anchor=NW)
+
+        self.filename=self.filename_ + '_mattingout.png'
+        # self.displayPhotoResult = photo
+        # self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
+        # self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
+        # self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
 
     def use_poly(self):
         self.activate_button(self.poly_button)
@@ -438,4 +489,11 @@ if config.random_mask:
     np.random.seed(config.seed)
 
 mu = Makeup()
+
+device = torch.device('cuda')
+mattingmodel = UNet(3, 1).to(device)
+PATH = './mattingmodel/weights_70.pth'
+#model.load_state_dict(torch.load(PATH, map_location='cpu'))
+mattingmodel.load_state_dict(torch.load(PATH))
+print("load mattingmodel")
 Paint(sess)
