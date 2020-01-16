@@ -1,5 +1,6 @@
 from tkinter import *
 from PIL import Image, ImageTk, ImageDraw
+from tkinter import ttk
 import tkinter.filedialog as tkFileDialog
 import numpy as np
 import cv2
@@ -27,6 +28,10 @@ import torch
 import cv2
 import PIL.Image as Image
 from net.mattingnet import UNet
+from StyleTransfer.neural_style import stylize
+from StyleTransfer import utils
+from StyleTransfer.transformer_net import TransformerNet
+from StyleTransfer.vgg import Vgg16
 
 class Paint():
     MARKER_COLOR = 'white'
@@ -36,17 +41,20 @@ class Paint():
         self.root = Tk()
         self.inpaintingmodel=model
 
-        self.rect_button = Button(self.root, text='rectangle', command=self.use_rect, width=12, height=3)
-        self.rect_button.grid(row=0, column=2)
+        self.rect_button = Button(self.root, text='backgroung remove', command=self.use_rect, width=18, height=3)
+        self.rect_button.grid(row=1, column=2)
 
-        self.poly_button = Button(self.root, text='stroke', command=self.use_poly, width=12, height=3)
-        self.poly_button.grid(row=1, column=2)
+        self.poly_button = Button(self.root, text='mask', command=self.use_poly, width=18, height=3)
+        self.poly_button.grid(row=3, column=2)
 
-        self.revoke_button = Button(self.root, text='revoke', command=self.revoke, width=12, height=3)
-        self.revoke_button.grid(row=2, column=2)
+        # self.revoke_button = Button(self.root, text='revoke', command=self.revoke, width=18, height=3)
+        # self.revoke_button.grid(row=6, column=2)
 
-        self.clear_button = Button(self.root, text='clear', command=self.clear, width=12, height=3)
-        self.clear_button.grid(row=3, column=2)
+        # self.revoke_button = Spinbox(self.root, from_=0, to=100, width=18)
+        # self.revoke_button.grid(row=6, column=2)
+
+        self.clear_button = Button(self.root, text='clear', command=self.clear, width=18, height=3)
+        self.clear_button.grid(row=5, column=2)
 
         self.c = Canvas(self.root, bg='white', width=512+8, height=512)
         self.c.grid(row=0, column=0, rowspan=8)
@@ -54,15 +62,27 @@ class Paint():
         self.out = Canvas(self.root, bg='white', width=512+8, height=512)
         self.out.grid(row=0, column=1, rowspan=8)
 
-        self.save_button = Button(self.root, text="save", command=self.save, width=12, height=3)
-        self.save_button.grid(row=6, column=2)
+        self.save_button = Button(self.root, text="fill", command=self.save, width=18, height=3)
+        self.save_button.grid(row=4, column=2)
 
-        self.load_button = Button(self.root, text='load', command=self.load, width=12, height=3)
-        self.load_button.grid(row=5, column=2)
+        self.load_button = Button(self.root, text='load', command=self.load, width=18, height=3)
+        self.load_button.grid(row=0, column=2)
 
-        self.fill_button = Button(self.root, text='fill', command=self.fill, width=12, height=3)
-        self.fill_button.grid(row=7, column=2)
+        self.fill_button = Button(self.root, text='auto beauty', command=self.fill, width=18, height=3)
+        self.fill_button.grid(row=2, column=2)
         self.filename = None
+
+        self.lb = Label(self.root, text="Styles Box")
+        self.lb.grid(column=2, row=6, padx=8, pady=4)
+
+        # sace
+        self.style_list = ttk.Combobox(self.root, width=12)  # 初始化
+        self.style_list["values"] = ("drawing","engraving","painting")
+        self.style_list.current(0)  # 选择第一个
+        self.style_list.bind("<<ComboboxSelected>>", self.styleTrans)  # 绑定事件,(下拉列表框被选中时，绑定styleTrans()函数)
+
+        self.style_list.grid(row=7, column=2)
+        # sace
 
         self.setup()
         self.root.mainloop()
@@ -94,10 +114,39 @@ class Paint():
         self.mask = None
         self.result = None
         self.blank = None
-        self.line_width = 15
+        self.line_width = 10
 
         self.reuse = False
 
+    def styleTrans(self, *args):
+        wanna_num = self.style_list.get()
+        dic={'drawing':7,'engraving':0,'painting':9}
+        num=dic[wanna_num]
+        style_n = 10
+        stylemodel = './StyleTransfer/checkpoints/epoch_5_Wed_Jan_15_160613_2020_100000_10000000000.model'
+        cuda = 1
+        device = torch.device("cuda" if cuda else "cpu")
+        with torch.no_grad():
+            style_model = TransformerNet(style_num=style_n)
+            state_dict = torch.load(stylemodel)
+            style_model.load_state_dict(state_dict)
+            style_model.to(device)
+            savepath = self.filepath
+            i=num
+            style_i = i
+            print(i)
+            print(self.filename_)
+            output_image = str(i)
+            print(output_image)
+            content_img = os.path.join(self.filepath, self.filename)
+            stylize(content_img, style_n, style_model, style_i, output_image, savepath, cuda)
+            outpath=savepath+'/'+output_image+'_style'+str(style_i)+'.png'
+            photo = Image.open(outpath)
+            self.displayPhotoResult = photo
+            self.displayPhotoResult = self.displayPhotoResult.resize((self.im_w, self.im_h))
+            self.photo_tk_result = ImageTk.PhotoImage(image=self.displayPhotoResult)
+            self.out.create_image(0, 0, image=self.photo_tk_result, anchor=NW)
+        print(num)
 
     def checkResp(self):
         assert len(self.mask_candidate) == len(self.rect_candidate)
@@ -166,6 +215,7 @@ class Paint():
         maskeye = mask.copy()
         path = os.path.join(self.filepath, self.filename)
         face = next(iter(faces[path]))
+        print("auto beauty....")
         facemask = face.organs['left eye'].get_mask_abs() + face.organs['right eye'].get_mask_abs()
         for p in range(512):
             for q in range(512):
@@ -206,6 +256,7 @@ class Paint():
         image = np.expand_dims(image, 0)
         mask = np.expand_dims(mask, 0)
         result_tmp = self.inpaintingmodel.run(output, feed_dict={input_image_tf: image, input_mask_tf: mask})
+        print("finished...")
         result = cv2.merge([result_tmp[0][:, :, 2], result_tmp[0][:, :, 1], result_tmp[0][:, :, 0]])
         cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_autoout.png'), result)
         photo = Image.open(os.path.join(self.filepath, self.filename_ + '_autoout.png'))
@@ -241,7 +292,7 @@ class Paint():
         x = x.unsqueeze(0)
         x = x.to(device, dtype=torch.float)
         out = mattingmodel(x)
-        out = (out > 0.65) * 1
+        out = (out > 0.9) * 1
         out = out.cpu()
         x = x.cpu()
         print("done")
@@ -250,13 +301,18 @@ class Paint():
         tmp = x[0].numpy().astype(np.uint8)
         ori_image = cv2.merge([tmp[2], tmp[1], tmp[0]])
 
-        tmp_r = (tmp.astype(np.int)[2] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
-        tmp_g = (tmp.astype(np.int)[1] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
-        tmp_b = (tmp.astype(np.int)[0] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        # tmp_r = (tmp.astype(np.int)[2] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        # tmp_g = (tmp.astype(np.int)[1] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+        # tmp_b = (tmp.astype(np.int)[0] * (my_result.numpy()) + (1 - my_result.numpy()) * 255).astype(np.uint8)
+
+        bk = cv2.imread("./background/flower.jpg")
+        #bk = cv2.imread("./background/mei.jpg")
+        tmp_r = (tmp.astype(np.int)[2] * (my_result.numpy()) + (1 - my_result.numpy()) * bk[:, :, 2]).astype(np.uint8)
+        tmp_g = (tmp.astype(np.int)[1] * (my_result.numpy()) + (1 - my_result.numpy()) * bk[:, :, 1]).astype(np.uint8)
+        tmp_b = (tmp.astype(np.int)[0] * (my_result.numpy()) + (1 - my_result.numpy()) * bk[:, :, 0]).astype(np.uint8)
         final = cv2.merge([tmp_r, tmp_g, tmp_b])
-
-
         final = cv2.cvtColor(final, cv2.COLOR_BGR2RGB)
+
         cv2.imwrite(os.path.join(self.filepath, self.filename_ + '_mattingout.png'), final)
 
         photo = Image.open(os.path.join(self.filepath, self.filename_ + '_mattingout.png'))
@@ -291,7 +347,7 @@ class Paint():
     def clear(self):
         self.mask = np.zeros((self.im_h, self.im_w, 1)).astype(np.uint8)
         if self.mode == 'poly':
-            photo = Image.open(self.filename)
+            photo = Image.open(os.path.join(self.filepath, self.filename))
             self.image = cv2.imread(self.filename)
             self.displayPhoto = photo
             self.displayPhoto = self.displayPhoto.resize((self.im_w, self.im_h))
