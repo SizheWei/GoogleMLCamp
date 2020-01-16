@@ -71,6 +71,7 @@ class UNet(nn.Module):
 
 import torch.utils.data as data
 import os
+import glob
 import PIL.Image as Image
  
 #data.Dataset:
@@ -79,40 +80,47 @@ import PIL.Image as Image
 class LiverDataset(data.Dataset):
     #创建LiverDataset类的实例时，就是在调用init初始化
 #     def __init__(self,root,transform = None,target_transform = None):#root表示图片路径
-    def __init__(self):
-#         n = len(os.listdir(root))//2 #os.listdir(path)返回指定路径下的文件和文件夹列表。/是真除法,//对结果取整
-        
+#     def __init__(self):
+
 #         imgs = []
-#         for i in range(n):
-#             img = os.path.join(root,"%03d.png"%i)#os.path.join(path1[,path2[,......]]):将多个路径组合后返回
-#             mask = os.path.join(root,"%03d_mask.png"%i)
-#             imgs.append([img,mask])#append只能有一个参数，加上[]变成一个list
         
-#         self.imgs = imgs
-#         self.transform = transform
-#         self.target_transform = target_transform
-        data_dir_clip = './data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000000'
-#         data_dir_clip = '/home/vivi/sace/Google_ML_Camp/bk_rm/data/clip_img/1803151818/clip_00000000'
+#         data_dir_clip = './data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000000'
+# #         data_dir_clip = '/home/vivi/sace/Google_ML_Camp/bk_rm/data/clip_img/1803151818/clip_00000000'
 
-        data_dir_mat = './data/aisegmentcom-matting-human-datasets/matting/1803151818/matting_00000000'
-#         data_dir_mat = '/home/vivi/sace/Google_ML_Camp/bk_rm/data/matting/1803151818/clip_00000000'
+#         data_dir_mat = './data/aisegmentcom-matting-human-datasets/matting/1803151818/matting_00000000'
+# #         data_dir_mat = '/home/vivi/sace/Google_ML_Camp/bk_rm/data/matting/1803151818/clip_00000000'
     
-        # n = len(os.listdir(data_dir_clip))
-        clip_imgs = os.listdir(data_dir_clip)
-        # mat_imgs = os.listdir(data_dir_mat)
-        imgs = []
+#         clip_imgs = os.listdir(data_dir_clip)
 
-        for enu_num, img_clip in enumerate(clip_imgs):
-            img_mat = img_clip[0:-4]+'.png'
-            img_clip_path = data_dir_clip + '/' + img_clip
-            img_mat_path = data_dir_mat + '/' + img_mat
-#             img_clip_r = cv2.imread(img_clip_path)
-#             img_mat_r = cv2.imread(img_mat_path, cv2.IMREAD_UNCHANGED)
-#             Alpha = img_mat_r[:,:,3]
-            imgs.append([img_clip_path,img_mat_path])
-#             if enu_num==1:
-#                 break
-        self.imgs = imgs   
+#         for enu_num, img_clip in enumerate(clip_imgs):
+#             img_mat = img_clip[0:-4]+'.png'
+#             img_clip_path = data_dir_clip + '/' + img_clip
+#             img_mat_path = data_dir_mat + '/' + img_mat
+# #             img_clip_r = cv2.imread(img_clip_path)
+# #             img_mat_r = cv2.imread(img_mat_path, cv2.IMREAD_UNCHANGED)
+# #             Alpha = img_mat_r[:,:,3]
+#             imgs.append([img_clip_path,img_mat_path])
+# #             if enu_num==1:
+# #                 break
+#         self.imgs = imgs   
+
+    def __init__(self):
+
+        imgs = []
+        
+        dataset_path="./data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000000"
+        pathfile = glob.glob(os.path.join(dataset_path, '*.jpg'))
+        dataset_path1 = "./data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000001"
+        pathfile_new = glob.glob(os.path.join(dataset_path1, '*.jpg'))
+        pathfile.extend(pathfile_new)
+        dataset_path1 = "./data/aisegmentcom-matting-human-datasets/clip_img/1803151818/clip_00000002"
+        pathfile_new = glob.glob(os.path.join(dataset_path1, '*.jpg'))
+        pathfile.extend(pathfile_new)
+        
+        for __num__, img_clip in enumerate(pathfile):
+            img_mat = img_clip[0:43]+'matting/'+img_clip[52:63]+'matting_'+img_clip[68:-4]+'.png'
+            imgs.append([img_clip, img_mat])
+        self.imgs = imgs 
     
     def __getitem__(self,index):
         x_path,y_path = self.imgs[index]
@@ -154,7 +162,7 @@ x_transform = T.Compose([
 # mask只需要转换为tensor
 y_transform = T.ToTensor()
  
-def train_model(model,criterion,optimizer,dataload,start_epoch = 0, num_epochs=1000):
+def train_model(model,criterion,optimizer,dataload,start_epoch = 0, num_epochs=200):
     
     for epoch in range(start_epoch,num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -175,8 +183,8 @@ def train_model(model,criterion,optimizer,dataload,start_epoch = 0, num_epochs=1
             step += 1
             print("%d/%d,train_loss:%0.3f" % (step, dataset_size // dataload.batch_size, loss.item()))
         print("epoch %d loss:%0.3f" % (epoch, epoch_loss))
-        if epoch%10 == 0:
-            torch.save(model.state_dict(),'./model/weights_%d.pth' % epoch)# 返回模型的所有内容
+        if epoch%5 == 0:
+            torch.save(model.state_dict(),'./model_big/weights_%d.pth' % epoch)# 返回模型的所有内容
             print("yeah! please see weights_{}.pth".format(epoch))
     return model
  
@@ -184,7 +192,7 @@ def train_model(model,criterion,optimizer,dataload,start_epoch = 0, num_epochs=1
 def train():
     model = UNet(3,1).to(device)
 #     batch_size = args.batch_size
-    continuerun=True
+    continuerun=False
     latest_epoch = 20
     start_epoch=0
     if  continuerun:
@@ -226,22 +234,29 @@ def test():
             plt.pause(0.01)
         plt.show()
  
- 
+
+
 # if __name__ == '__main__':
+#     arg_batch_size = 4
+# #     weight = './model'
+#     print(torch.cuda.is_available())
+
 #     #参数解析
 #     parser = argparse.ArgumentParser() #创建一个ArgumentParser对象
 #     parser.add_argument('action', type=str, help='train or test')#添加参数
 #     parser.add_argument('--batch_size', type=int, default=4)
-#     parser.add_argument('--weight', type=str, help='the path of the mode weight file')
+#     parser.add_argument('--cont', type=str, help='y or n for if continue model-training')
 #     args = parser.parse_args()
     
 #     if args.action == 'train':
-#         train()
+#         if args.cont == 'y':
+#             train(cont)
+ 
 #     elif args.action == 'test':
 #         test()
 
 if __name__ == '__main__':
-    arg_batch_size = 4
-    weight = './model'
+    arg_batch_size = 8
+# #     weight = './model'
     print(torch.cuda.is_available())
     train()

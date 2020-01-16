@@ -7,4 +7,7 @@ pre_bk_rm/.ipynb_checkpoints/
 !pre_bk_rm/output_4.png
 .DS_Store
 bk_rm/.DS_Store
+bk_rm/weights_70.pth
 ./UI/.idea/
+checkpoints/shape_predictor_68_face_landmarks.dat
+
