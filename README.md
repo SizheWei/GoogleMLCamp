@@ -20,7 +20,7 @@
 - [PDF version of our Poster](https://drive.google.com/open?id=11Vw5NETe8snIOAkzc1CB20ipFcNdZ19O)
 - [PDF version of our Slides](https://drive.google.com/open?id=11e7_43-RdNe7ydJTMUIXFIymHLrt_PTi)
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/hm81MiBXZ8c" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![](http://img.youtube.com/vi/hm81MiBXZ8c/0.jpg)](http://www.youtube.com/watch?v=hm81MiBXZ8c "Our Demo Video")
 
-## 
+
 
