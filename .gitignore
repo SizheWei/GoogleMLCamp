@@ -7,13 +7,9 @@ pre_bk_rm/.ipynb_checkpoints/
 !pre_bk_rm/output_4.png
 .DS_Store
 bk_rm/.DS_Store
-<<<<<<< HEAD
 checkpoints/
 shape_predictor_68_face_landmarks.dat
 inpainting_tensorflow/mattingmodel/
-=======
 bk_rm/weights_70.pth
-./UI/.idea/
 checkpoints/shape_predictor_68_face_landmarks.dat
 
->>>>>>> 68a583c9373706abac81841255030ae6030f1c8f
